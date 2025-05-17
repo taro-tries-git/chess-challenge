@@ -51,17 +51,17 @@ class Board:
         # En passant target square (row, col) or None if not available
         self.en_passant_target = None
         
-        # Move history
-        self.move_history = []  # List of moves made
+        # History
+        self.position_history = []  # List of comprehensive board states
+        
+        # Halfmove clock
+        self.halfmove_clock = 0 # Number of halfmoves since the last capture or pawn advance
         
         # Castling rights
         self.white_kingside_castle = True   # White can castle kingside
         self.white_queenside_castle = True  # White can castle queenside
         self.black_kingside_castle = True   # Black can castle kingside
         self.black_queenside_castle = True  # Black can castle queenside
-        
-        # Castling rights history
-        self.castling_rights_history = []  # List of castling rights states
 
     def get_piece(self, row, col):
         """Get the piece type at the specified position."""
@@ -240,16 +240,18 @@ class Board:
         Returns:
             bool: True if the move was successful, False otherwise
         """
-        # Save current state
-        self.position_history.append([row[:] for row in self.board])
-        
-        # Save current castling rights
-        self.castling_rights_history.append({
-            'white_kingside': self.white_kingside_castle,
-            'white_queenside': self.white_queenside_castle,
-            'black_kingside': self.black_kingside_castle,
-            'black_queenside': self.black_queenside_castle
-        })
+        # Save current comprehensive state BEFORE making the move
+        current_state = {
+            'board': [row[:] for row in self.board],
+            'white_kingside_castle': self.white_kingside_castle,
+            'white_queenside_castle': self.white_queenside_castle,
+            'black_kingside_castle': self.black_kingside_castle,
+            'black_queenside_castle': self.black_queenside_castle,
+            'en_passant_target': self.en_passant_target,
+            'halfmove_clock': self.halfmove_clock,
+            'white_turn': self.white_turn  # Whose turn it is before this move
+        }
+        self.position_history.append(current_state)
         
         # Get the piece being moved
         piece = self.get_piece(move.start_row, move.start_col)
@@ -290,6 +292,12 @@ class Board:
         self.board[move.end_row][move.end_col] = piece
         self.piece_positions[piece].append((move.end_row, move.end_col))
         
+        # Update halfmove clock
+        if abs(piece) == piece_helper.white_pawn or captured_piece != piece_helper.empty or move.is_en_passant:
+            self.halfmove_clock = 0
+        else:
+            self.halfmove_clock += 1
+        
         # Update castling rights
         if abs(piece) == piece_helper.white_king:
             if piece > 0:  # White king
@@ -319,9 +327,6 @@ class Board:
         # Switch turns
         self.white_turn = not self.white_turn
         
-        # Add move to history
-        self.move_history.append(move)
-        
         return True
 
     def undo_move(self) -> bool:
@@ -330,44 +335,28 @@ class Board:
         Returns:
             bool: True if a move was undone, False if there are no moves to undo
         """
-        if not self.move_history:
+        if not self.position_history:
             return False
             
-        # Get the last move
-        move = self.move_history.pop()
+        # Restore the comprehensive state from before the undone move
+        last_saved_state = self.position_history.pop()
         
-        # Restore the board state
-        self.board = self.position_history.pop()
-        
-        # Restore castling rights
-        if self.castling_rights_history:
-            castling_rights = self.castling_rights_history.pop()
-            self.white_kingside_castle = castling_rights['white_kingside']
-            self.white_queenside_castle = castling_rights['white_queenside']
-            self.black_kingside_castle = castling_rights['black_kingside']
-            self.black_queenside_castle = castling_rights['black_queenside']
-        
-        # Rebuild piece positions
+        self.board = last_saved_state['board']
+        self.white_kingside_castle = last_saved_state['white_kingside_castle']
+        self.white_queenside_castle = last_saved_state['white_queenside_castle']
+        self.black_kingside_castle = last_saved_state['black_kingside_castle']
+        self.black_queenside_castle = last_saved_state['black_queenside_castle']
+        self.en_passant_target = last_saved_state['en_passant_target']
+        self.halfmove_clock = last_saved_state['halfmove_clock']
+        self.white_turn = last_saved_state['white_turn'] # This restores the turn to what it was before the move
+
+        # Rebuild piece positions from the restored board
         self.piece_positions = {piece_type: [] for piece_type in self.piece_positions}
-        for row in range(8):
-            for col in range(8):
-                piece = self.board[row][col]
+        for r in range(8):
+            for c in range(8):
+                piece = self.board[r][c]
                 if piece != piece_helper.empty:
-                    self.piece_positions[piece].append((row, col))
-        
-        # Switch turns back
-        self.white_turn = not self.white_turn
-        
-        # Restore en passant target
-        if len(self.move_history) > 0:
-            last_move = self.move_history[-1]
-            if abs(self.get_piece(last_move.end_row, last_move.end_col)) == piece_helper.white_pawn and \
-               abs(last_move.end_row - last_move.start_row) == 2:
-                self.en_passant_target = ((last_move.start_row + last_move.end_row) // 2, last_move.start_col)
-            else:
-                self.en_passant_target = None
-        else:
-            self.en_passant_target = None
+                    self.piece_positions[piece].append((r, c))
         
         return True
 
@@ -462,6 +451,91 @@ class Board:
                     moves.append(Move(row, col, row, col - 2, is_queenside_castle=True))
         
         return moves
+
+    def get_all_legal_moves(self, white: bool) -> list[Move]:
+        """
+        Get all legal moves for the given color.
+        Args:
+            white: True for white's moves, False for black's moves
+        Returns:
+            List of Move objects representing all legal moves for the given color
+        """
+        moves = []
+        piece_types = [
+            piece_helper.white_pawn,
+            piece_helper.white_knight,
+            piece_helper.white_bishop,
+            piece_helper.white_rook,
+            piece_helper.white_queen,
+            piece_helper.white_king
+        ] if white else [
+            piece_helper.black_pawn,
+            piece_helper.black_knight,
+            piece_helper.black_bishop,
+            piece_helper.black_rook,
+            piece_helper.black_queen,
+            piece_helper.black_king
+        ]
+        
+        # Get all legal moves for each piece of the given color
+        for piece_type in piece_types:
+            for row, col in self.piece_positions[piece_type]:
+                moves.extend(self.get_legal_moves(row, col))
+        
+        return moves
+
+    def get_gamestate(self) -> str:
+        """
+        Determines the current state of the game.
+        Returns:
+            str: "ongoing", "checkmate", "stalemate", "draw_50_move", "draw_threefold_repetition"
+        """
+        # Check for checkmate or stalemate
+        legal_moves = self.get_all_legal_moves(self.white_turn)
+        if not legal_moves:
+            if self.king_is_attacked(self.white_turn):
+                return "checkmate"
+            else:
+                return "stalemate"
+
+        # Check for 50-move rule
+        if self.halfmove_clock >= 100:  # 50 full moves (100 halfmoves)
+            return "draw_50_move"
+
+        # Check for threefold repetition
+        # A position is repeated if the board, current turn, castling rights, and en passant target are identical.
+        current_board_tuple = tuple(map(tuple, self.board))
+        current_comparable_state = (
+            current_board_tuple,
+            self.white_turn,
+            self.white_kingside_castle,
+            self.white_queenside_castle,
+            self.black_kingside_castle,
+            self.black_queenside_castle,
+            self.en_passant_target
+        )
+
+        # Count occurrences of the current state in history.
+        # The current state itself counts as one occurrence.
+        occurrences = 1 
+        for past_saved_state_dict in self.position_history:
+            past_board_tuple = tuple(map(tuple, past_saved_state_dict['board']))
+            past_comparable_state = (
+                past_board_tuple,
+                past_saved_state_dict['white_turn'],
+                past_saved_state_dict['white_kingside_castle'],
+                past_saved_state_dict['white_queenside_castle'],
+                past_saved_state_dict['black_kingside_castle'],
+                past_saved_state_dict['black_queenside_castle'],
+                past_saved_state_dict['en_passant_target']
+            )
+            if past_comparable_state == current_comparable_state:
+                occurrences += 1
+        
+        if occurrences >= 3:
+            return "draw_threefold_repetition"
+
+        return "ongoing"
 
 def main():
     print("Hello, World!")
