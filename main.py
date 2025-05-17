@@ -53,13 +53,15 @@ class Board:
         
         # Move history
         self.move_history = []  # List of moves made
-        self.position_history = []  # List of board states
         
         # Castling rights
         self.white_kingside_castle = True   # White can castle kingside
         self.white_queenside_castle = True  # White can castle queenside
         self.black_kingside_castle = True   # Black can castle kingside
         self.black_queenside_castle = True  # Black can castle queenside
+        
+        # Castling rights history
+        self.castling_rights_history = []  # List of castling rights states
 
     def get_piece(self, row, col):
         """Get the piece type at the specified position."""
@@ -241,6 +243,14 @@ class Board:
         # Save current state
         self.position_history.append([row[:] for row in self.board])
         
+        # Save current castling rights
+        self.castling_rights_history.append({
+            'white_kingside': self.white_kingside_castle,
+            'white_queenside': self.white_queenside_castle,
+            'black_kingside': self.black_kingside_castle,
+            'black_queenside': self.black_queenside_castle
+        })
+        
         # Get the piece being moved
         piece = self.get_piece(move.start_row, move.start_col)
         if piece == piece_helper.empty:
@@ -328,6 +338,14 @@ class Board:
         
         # Restore the board state
         self.board = self.position_history.pop()
+        
+        # Restore castling rights
+        if self.castling_rights_history:
+            castling_rights = self.castling_rights_history.pop()
+            self.white_kingside_castle = castling_rights['white_kingside']
+            self.white_queenside_castle = castling_rights['white_queenside']
+            self.black_kingside_castle = castling_rights['black_kingside']
+            self.black_queenside_castle = castling_rights['black_queenside']
         
         # Rebuild piece positions
         self.piece_positions = {piece_type: [] for piece_type in self.piece_positions}
