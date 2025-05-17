@@ -26,6 +26,6 @@ class DefaultPlayer:
         # Select a random move
         chosen_move = random.choice(legal_moves)
 
-        sleep(0.5)
+        # sleep(0.1)
 
         return chosen_move

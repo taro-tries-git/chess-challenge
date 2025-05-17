@@ -9,6 +9,7 @@ from player_one import PlayerOne
 from player_two import PlayerTwo
 import time
 
+
 def play_game(board: Board, timer: Timer, white_player: DefaultPlayer, black_player: DefaultPlayer, window: ChessUI) -> str:
     """Play a single game between two bots"""
     while True:
