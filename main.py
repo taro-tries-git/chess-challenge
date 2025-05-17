@@ -27,12 +27,19 @@ class Move:
         self.is_queenside_castle = is_queenside_castle
 
 class Board:
-    def __init__(self):
+    def __init__(self, fen: str ="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"):
+        """
+       Set the board position from FEN notation.
+       Args:
+           fen: FEN string representing the position
+       Returns:
+           bool: True if successful, False if invalid FEN
+       """
         # Initialize empty 8x8 board
         self.board = [[piece_helper.empty for _ in range(8)] for _ in range(8)]
-        
-        self.piece_positions = {            # Dictionary to store positions of pieces by type
-            piece_helper.empty: [],         # Format: {piece_type: [(row, col), ...]}
+
+        self.piece_positions = {  # Dictionary to store positions of pieces by type
+            piece_helper.empty: [],  # Format: {piece_type: [(row, col), ...]}
             piece_helper.white_pawn: [],
             piece_helper.white_knight: [],
             piece_helper.white_bishop: [],
@@ -46,22 +53,140 @@ class Board:
             piece_helper.black_queen: [],
             piece_helper.black_king: []
         }
-        self.white_turn = True  # True if it's white's turn, False if it's black's turn
-        
-        # En passant target square (row, col) or None if not available
-        self.en_passant_target = None
-        
+
         # History
         self.position_history = []  # List of comprehensive board states
         
-        # Halfmove clock
-        self.halfmove_clock = 0 # Number of halfmoves since the last capture or pawn advance
+        # Split FEN into its components
+        parts = fen.split()
+        if len(parts) < 4:
+            print("ERROR: fen has less than 4 parts")
+
+        position, turn, castling, en_passant = parts[:4]
+        halfmove = "0" if len(parts) < 5 else parts[4]
+
+        # Parse position
+        rows = position.split('/')
+        if len(rows) != 8:
+            print("ERROR: fen needs 8 rows")
+
+        # FEN piece to piece_helper mapping
+        piece_map = {
+            'P': piece_helper.white_pawn,
+            'N': piece_helper.white_knight,
+            'B': piece_helper.white_bishop,
+            'R': piece_helper.white_rook,
+            'Q': piece_helper.white_queen,
+            'K': piece_helper.white_king,
+            'p': piece_helper.black_pawn,
+            'n': piece_helper.black_knight,
+            'b': piece_helper.black_bishop,
+            'r': piece_helper.black_rook,
+            'q': piece_helper.black_queen,
+            'k': piece_helper.black_king
+        }
+
+        for row_idx, row in enumerate(rows):
+            col_idx = 0
+            for char in row:
+                if char.isdigit():
+                    col_idx += int(char)
+                else:
+                    if col_idx >= 8:
+                        print("ERROR: fen problem")
+                    if char in piece_map:
+                        piece = piece_map[char]
+                        self.board[row_idx][col_idx] = piece
+                        self.piece_positions[piece].append((row_idx, col_idx))
+                    col_idx += 1
+            if col_idx != 8:
+                print("ERROR: fen problem")
+
+        # Parse turn
+        self.white_turn = turn == 'w'
+
+        # Parse castling rights
+        self.white_kingside_castle = 'K' in castling
+        self.white_queenside_castle = 'Q' in castling
+        self.black_kingside_castle = 'k' in castling
+        self.black_queenside_castle = 'q' in castling
+
+        # Parse en passant
+        if en_passant != '-':
+            col = ord(en_passant[0]) - ord('a')
+            row = 8 - int(en_passant[1])
+            self.en_passant_target = (row, col)
+        else:
+            self.en_passant_target = None
+
+        # Parse halfmove clock
+        self.halfmove_clock = int(halfmove)
+
+    def get_fen(self) -> str:
+        """
+        Get the current position in FEN notation.
+        Returns:
+            str: FEN string representing the current position
+        """
+        # Piece helper to FEN piece mapping
+        piece_map = {
+            piece_helper.white_pawn: 'P',
+            piece_helper.white_knight: 'N',
+            piece_helper.white_bishop: 'B',
+            piece_helper.white_rook: 'R',
+            piece_helper.white_queen: 'Q',
+            piece_helper.white_king: 'K',
+            piece_helper.black_pawn: 'p',
+            piece_helper.black_knight: 'n',
+            piece_helper.black_bishop: 'b',
+            piece_helper.black_rook: 'r',
+            piece_helper.black_queen: 'q',
+            piece_helper.black_king: 'k'
+        }
         
-        # Castling rights
-        self.white_kingside_castle = True   # White can castle kingside
-        self.white_queenside_castle = True  # White can castle queenside
-        self.black_kingside_castle = True   # Black can castle kingside
-        self.black_queenside_castle = True  # Black can castle queenside
+        # Build position string
+        position = []
+        for row in self.board:
+            empty_count = 0
+            row_str = ""
+            for piece in row:
+                if piece == piece_helper.empty:
+                    empty_count += 1
+                else:
+                    if empty_count > 0:
+                        row_str += str(empty_count)
+                        empty_count = 0
+                    row_str += piece_map[piece]
+            if empty_count > 0:
+                row_str += str(empty_count)
+            position.append(row_str)
+        position = '/'.join(position)
+        
+        # Add turn
+        turn = 'w' if self.white_turn else 'b'
+        
+        # Add castling rights
+        castling = ''
+        if self.white_kingside_castle:
+            castling += 'K'
+        if self.white_queenside_castle:
+            castling += 'Q'
+        if self.black_kingside_castle:
+            castling += 'k'
+        if self.black_queenside_castle:
+            castling += 'q'
+        if not castling:
+            castling = '-'
+        
+        # Add en passant target
+        if self.en_passant_target:
+            row, col = self.en_passant_target
+            en_passant = chr(ord('a') + col) + str(8 - row)
+        else:
+            en_passant = '-'
+        
+        # Combine all parts
+        return f"{position} {turn} {castling} {en_passant} {self.halfmove_clock}"
 
     def get_piece(self, row, col):
         """Get the piece type at the specified position."""
@@ -197,6 +322,24 @@ class Board:
 
         return moves
 
+    def is_square_attacked(self, row: int, col: int, is_white: bool) -> bool:
+        # Check if any opponent piece can attack the king
+        opponent_pieces = [
+            piece_helper.black_pawn, piece_helper.black_knight, piece_helper.black_bishop,
+            piece_helper.black_rook, piece_helper.black_queen, piece_helper.black_king
+        ] if is_white else [
+            piece_helper.white_pawn, piece_helper.white_knight, piece_helper.white_bishop,
+            piece_helper.white_rook, piece_helper.white_queen, piece_helper.white_king
+        ]
+
+        # Check each opponent piece's possible moves (only captures)
+        for piece_type in opponent_pieces:
+            for piece_row, piece_col in self.piece_positions[piece_type]:
+                moves = self.get_pseudo_legal_moves(piece_row, piece_col)
+                if any(move.end_row == row and move.end_col == col for move in moves):
+                    return True
+        return False
+
     def king_is_attacked(self, white_king: bool) -> bool:
         """
         Check if the specified king is under attack.
@@ -210,9 +353,12 @@ class Board:
         king_positions = self.piece_positions[king]
         
         if not king_positions:  # King not found
+            print("ERROR! NO KING FOUND")
             return False
             
         king_row, king_col = king_positions[0]  # There should only be one king
+        if self.board[king_row][king_col] != king:
+            print("ERROR: somrsdvsdv")
         
         # Check if any opponent piece can attack the king
         opponent_pieces = [
@@ -222,7 +368,7 @@ class Board:
             piece_helper.white_pawn, piece_helper.white_knight, piece_helper.white_bishop,
             piece_helper.white_rook, piece_helper.white_queen, piece_helper.white_king
         ]
-        
+
         # Check each opponent piece's possible moves (only captures)
         for piece_type in opponent_pieces:
             for piece_row, piece_col in self.piece_positions[piece_type]:
@@ -360,7 +506,7 @@ class Board:
         
         return True
 
-    def get_legal_moves(self, row: int, col: int) -> list[Move]:
+    def get_piece_moves(self, row: int, col: int) -> list[Move]:
         """
         Get all legal moves for a piece at the given position, including castling.
         A move is legal if it doesn't leave the king in check.
@@ -408,17 +554,7 @@ class Board:
                 # Check if squares are not under attack
                 squares_safe = True
                 for c in range(col, col + 3):  # Check king's square and two squares to the right
-                    # Make temporary move
-                    self.board[row][col] = piece_helper.empty
-                    self.board[row][c] = piece
-                    # Check if square is under attack
-                    if self.king_is_attacked(is_white):
-                        squares_safe = False
-                    # Undo temporary move
-                    self.board[row][col] = piece
-                    self.board[row][c] = piece_helper.empty
-                    if not squares_safe:
-                        break
+                    squares_safe &= not self.is_square_attacked(row, c, is_white)
                 
                 if path_clear and squares_safe:
                     moves.append(Move(row, col, row, col + 2, is_kingside_castle=True))
@@ -435,17 +571,7 @@ class Board:
                 # Check if squares are not under attack
                 squares_safe = True
                 for c in range(col, col - 3, -1):  # Check king's square and two squares to the left
-                    # Make temporary move
-                    self.board[row][col] = piece_helper.empty
-                    self.board[row][c] = piece
-                    # Check if square is under attack
-                    if self.king_is_attacked(is_white):
-                        squares_safe = False
-                    # Undo temporary move
-                    self.board[row][col] = piece
-                    self.board[row][c] = piece_helper.empty
-                    if not squares_safe:
-                        break
+                    squares_safe &= not self.is_square_attacked(row, c, is_white)
                 
                 if path_clear and squares_safe:
                     moves.append(Move(row, col, row, col - 2, is_queenside_castle=True))
@@ -480,7 +606,7 @@ class Board:
         # Get all legal moves for each piece of the given color
         for piece_type in piece_types:
             for row, col in self.piece_positions[piece_type]:
-                moves.extend(self.get_legal_moves(row, col))
+                moves.extend(self.get_piece_moves(row, col))
         
         return moves
 
