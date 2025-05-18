@@ -14,10 +14,11 @@ class piece_helper:
     black_queen = -5
     black_king = -6
 
+
 class Move:
     def __init__(self, start_row: int, start_col: int, end_row: int, end_col: int, 
                  is_en_passant: bool = False, is_kingside_castle: bool = False, 
-                 is_queenside_castle: bool = False):
+                 is_queenside_castle: bool = False, promotion_piece: int = None):
         self.start_row = start_row
         self.start_col = start_col
         self.end_row = end_row
@@ -25,6 +26,8 @@ class Move:
         self.is_en_passant = is_en_passant
         self.is_kingside_castle = is_kingside_castle
         self.is_queenside_castle = is_queenside_castle
+        self.promotion_piece = promotion_piece  # The piece type to promote to
+
 
 class Board:
     def __init__(self, fen: str ="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"):
@@ -36,6 +39,7 @@ class Board:
            bool: True if successful, False if invalid FEN
        """
         # Initialize empty 8x8 board
+        self.last_board = None
         self.board = [[piece_helper.empty for _ in range(8)] for _ in range(8)]
 
         # History
@@ -86,7 +90,7 @@ class Board:
                 print("ERROR: fen problem")
 
         # Parse turn
-        self.white_turn = turn == 'w'
+        self.is_white_turn = turn == 'w'
 
         # Parse castling rights
         self.white_kingside_castle = 'K' in castling
@@ -146,7 +150,7 @@ class Board:
         position = '/'.join(position)
         
         # Add turn
-        turn = 'w' if self.white_turn else 'b'
+        turn = 'w' if self.is_white_turn else 'b'
         
         # Add castling rights
         castling = ''
@@ -203,20 +207,47 @@ class Board:
         # Pawn moves
         if abs(piece) == piece_helper.white_pawn:
             row_direction = -1 if is_white else 1
+            promotion_rank = 0 if is_white else 7
+            
             # Forward move
             if not only_captures:
                 if 0 <= row + row_direction < 8 and self.get_piece(row + row_direction, col) == piece_helper.empty:
-                    moves.append(Move(row, col, row + row_direction, col))
-                    # Double move from starting position
-                    if (is_white and row == 6) or (not is_white and row == 1):
-                        if self.get_piece(row + 2 * row_direction, col) == piece_helper.empty:
-                            moves.append(Move(row, col, row + 2 * row_direction, col))
+                    # Check for promotion
+                    if row + row_direction == promotion_rank:
+                        # Add all possible promotion moves
+                        promotion_pieces = [
+                            piece_helper.white_queen if is_white else piece_helper.black_queen,
+                            piece_helper.white_rook if is_white else piece_helper.black_rook,
+                            piece_helper.white_bishop if is_white else piece_helper.black_bishop,
+                            piece_helper.white_knight if is_white else piece_helper.black_knight
+                        ]
+                        for promotion_piece in promotion_pieces:
+                            moves.append(Move(row, col, row + row_direction, col, promotion_piece=promotion_piece))
+                    else:
+                        moves.append(Move(row, col, row + row_direction, col))
+                        # Double move from starting position
+                        if (is_white and row == 6) or (not is_white and row == 1):
+                            if self.get_piece(row + 2 * row_direction, col) == piece_helper.empty:
+                                moves.append(Move(row, col, row + 2 * row_direction, col))
+            
             # Regular captures
             for col_direction in [-1, 1]:
                 if 0 <= col + col_direction < 8 and 0 <= row + row_direction < 8:
                     target = self.get_piece(row + row_direction, col + col_direction)
                     if target != piece_helper.empty and (target > 0) != is_white:
-                        moves.append(Move(row, col, row + row_direction, col + col_direction))
+                        # Check for promotion
+                        if row + row_direction == promotion_rank:
+                            # Add all possible promotion captures
+                            promotion_pieces = [
+                                piece_helper.white_queen if is_white else piece_helper.black_queen,
+                                piece_helper.white_rook if is_white else piece_helper.black_rook,
+                                piece_helper.white_bishop if is_white else piece_helper.black_bishop,
+                                piece_helper.white_knight if is_white else piece_helper.black_knight
+                            ]
+                            for promotion_piece in promotion_pieces:
+                                moves.append(Move(row, col, row + row_direction, col + col_direction, promotion_piece=promotion_piece))
+                        else:
+                            moves.append(Move(row, col, row + row_direction, col + col_direction))
             
             # En passant captures
             if self.en_passant_target is not None:
@@ -333,7 +364,7 @@ class Board:
                 piece = self.board[r][c]
                 if piece != piece_helper.empty and (piece > 0) != is_white:
                     # Get all possible moves for this piece
-                    moves = self.get_pseudo_legal_moves(r, c, only_captures=True)
+                    moves = self.get_pseudo_legal_moves(r, c)
                     # Check if any move attacks the target square
                     if any(move.end_row == row and move.end_col == col for move in moves):
                         return True
@@ -377,7 +408,7 @@ class Board:
             'black_queenside_castle': self.black_queenside_castle,
             'en_passant_target': self.en_passant_target,
             'halfmove_clock': self.halfmove_clock,
-            'white_turn': self.white_turn  # Whose turn it is before this move
+            'is_white_turn': self.is_white_turn  # Whose turn it is before this move
         }
         self.position_history.append(current_state)
         
@@ -388,8 +419,8 @@ class Board:
             return False
 
         # Verify piece color matches turn
-        if (piece > 0) != self.white_turn:
-            print(f"ERROR: Wrong color piece moved! Turn: {'white' if self.white_turn else 'black'}, Piece: {piece}")
+        if (piece > 0) != self.is_white_turn:
+            print(f"ERROR: Wrong color piece moved! Turn: {'white' if self.is_white_turn else 'black'}, Piece: {piece}")
             return False
             
         # Remove piece from old position
@@ -427,6 +458,16 @@ class Board:
         if abs(target_piece) == piece_helper.white_king:
             print("ERROR: Attempting to capture a king!")
             return False
+        
+        # Handle pawn promotion
+        if move.promotion_piece is not None:
+            if abs(piece) != piece_helper.white_pawn:
+                print("ERROR: Promotion attempted with non-pawn piece!")
+                return False
+            if (piece > 0 and move.end_row != 0) or (piece < 0 and move.end_row != 7):
+                print("ERROR: Promotion attempted on wrong rank!")
+                return False
+            piece = move.promotion_piece
         
         self.board[move.end_row][move.end_col] = piece
 
@@ -466,7 +507,7 @@ class Board:
             self.en_passant_target = None
         
         # Switch turns
-        self.white_turn = not self.white_turn
+        self.is_white_turn = not self.is_white_turn
         
         return True
 
@@ -489,7 +530,7 @@ class Board:
         self.black_queenside_castle = last_saved_state['black_queenside_castle']
         self.en_passant_target = last_saved_state['en_passant_target']
         self.halfmove_clock = last_saved_state['halfmove_clock']
-        self.white_turn = last_saved_state['white_turn'] # This restores the turn to what it was before the move
+        self.is_white_turn = last_saved_state['is_white_turn'] # This restores the turn to what it was before the move
         
         return True
 
@@ -568,11 +609,9 @@ class Board:
         
         return moves
 
-    def get_all_legal_moves(self, white: bool) -> list[Move]:
+    def get_all_legal_moves(self) -> list[Move]:
         """
         Get all legal moves for the given color.
-        Args:
-            white: True for white's moves, False for black's moves
         Returns:
             List of Move objects representing all legal moves for the given color
         """
@@ -582,7 +621,7 @@ class Board:
             for col in range(8):
                 piece = self.board[row][col]
                 # If we find a piece of the right color
-                if piece != piece_helper.empty and (piece > 0) == white:
+                if piece != piece_helper.empty and (piece > 0) == self.is_white_turn:
                     moves.extend(self.get_piece_moves(row, col))
         return moves
 
@@ -593,9 +632,9 @@ class Board:
             str: "ongoing", "checkmate", "stalemate", "draw_50_move", "draw_threefold_repetition"
         """
         # Check for checkmate or stalemate
-        legal_moves = self.get_all_legal_moves(self.white_turn)
+        legal_moves = self.get_all_legal_moves()
         if not legal_moves:
-            if self.king_is_attacked(self.white_turn):
+            if self.king_is_attacked(self.is_white_turn):
                 return "checkmate"
             else:
                 return "stalemate"
@@ -609,7 +648,7 @@ class Board:
         current_board_tuple = tuple(map(tuple, self.board))
         current_comparable_state = (
             current_board_tuple,
-            self.white_turn,
+            self.is_white_turn,
             self.white_kingside_castle,
             self.white_queenside_castle,
             self.black_kingside_castle,
@@ -624,7 +663,7 @@ class Board:
             past_board_tuple = tuple(map(tuple, past_saved_state_dict['board']))
             past_comparable_state = (
                 past_board_tuple,
-                past_saved_state_dict['white_turn'],
+                past_saved_state_dict['is_white_turn'],
                 past_saved_state_dict['white_kingside_castle'],
                 past_saved_state_dict['white_queenside_castle'],
                 past_saved_state_dict['black_kingside_castle'],
@@ -638,9 +677,3 @@ class Board:
             return "draw_threefold_repetition"
 
         return "ongoing"
-
-def main():
-    print("Hello, World!")
-
-if __name__ == "__main__":
-    main() 

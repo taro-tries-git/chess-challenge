@@ -21,7 +21,7 @@ class DefaultPlayer:
             tuple: (start_row, start_col, end_row, end_col) representing the move
         """
         # Get all legal moves for the current position
-        legal_moves = board.get_all_legal_moves(board.white_turn)
+        legal_moves = board.get_all_legal_moves()
             
         # Select a random move
         chosen_move = random.choice(legal_moves)

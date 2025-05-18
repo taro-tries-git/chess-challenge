@@ -19,7 +19,7 @@ def play_game(board: Board, timer: Timer, white_player: DefaultPlayer, black_pla
         time.sleep(0.5)  # Add a small delay to make the game visible
         
         # Get the current player
-        current_player = white_player if board.white_turn else black_player
+        current_player = white_player if board.is_white_turn else black_player
         
         # Start the timer for this turn
         timer.start_turn()
@@ -79,7 +79,7 @@ def main():
             
             # Update scores
             if result == "checkmate":
-                winner = black_player.name if board.white_turn else white_player.name
+                winner = black_player.name if board.is_white_turn else white_player.name
                 scores[winner] += 1
                 print(f"Game Over: {winner} wins by checkmate!")
             else:
