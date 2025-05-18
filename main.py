@@ -14,10 +14,11 @@ class piece_helper:
     black_queen = -5
     black_king = -6
 
+
 class Move:
     def __init__(self, start_row: int, start_col: int, end_row: int, end_col: int, 
                  is_en_passant: bool = False, is_kingside_castle: bool = False, 
-                 is_queenside_castle: bool = False):
+                 is_queenside_castle: bool = False, promotion_piece: int = None):
         self.start_row = start_row
         self.start_col = start_col
         self.end_row = end_row
@@ -25,6 +26,28 @@ class Move:
         self.is_en_passant = is_en_passant
         self.is_kingside_castle = is_kingside_castle
         self.is_queenside_castle = is_queenside_castle
+        self.promotion_piece = promotion_piece  # The piece type to promote to
+
+    def get_printable(self) -> str:
+        """
+        Returns a human-readable string representation of the move (e.g. 'e2-e4').
+        Returns:
+            str: The move in algebraic notation
+        """
+        # Convert row/col coordinates to algebraic notation
+        start_square = chr(ord('a') + self.start_col) + str(8 - self.start_row)
+        end_square = chr(ord('a') + self.end_col) + str(8 - self.end_row)
+        
+        # Special move annotations
+        if self.is_kingside_castle:
+            return "O-O"
+        elif self.is_queenside_castle:
+            return "O-O-O"
+        elif self.is_en_passant:
+            return f"{start_square}-{end_square} e.p."
+            
+        return f"{start_square}-{end_square}"
+
 
 class Board:
     def __init__(self, fen: str ="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"):
@@ -36,23 +59,8 @@ class Board:
            bool: True if successful, False if invalid FEN
        """
         # Initialize empty 8x8 board
+        self.last_board = None
         self.board = [[piece_helper.empty for _ in range(8)] for _ in range(8)]
-
-        self.piece_positions = {  # Dictionary to store positions of pieces by type
-            piece_helper.empty: [],  # Format: {piece_type: [(row, col), ...]}
-            piece_helper.white_pawn: [],
-            piece_helper.white_knight: [],
-            piece_helper.white_bishop: [],
-            piece_helper.white_rook: [],
-            piece_helper.white_queen: [],
-            piece_helper.white_king: [],
-            piece_helper.black_pawn: [],
-            piece_helper.black_knight: [],
-            piece_helper.black_bishop: [],
-            piece_helper.black_rook: [],
-            piece_helper.black_queen: [],
-            piece_helper.black_king: []
-        }
 
         # History
         self.position_history = []  # List of comprehensive board states
@@ -97,13 +105,12 @@ class Board:
                     if char in piece_map:
                         piece = piece_map[char]
                         self.board[row_idx][col_idx] = piece
-                        self.piece_positions[piece].append((row_idx, col_idx))
                     col_idx += 1
             if col_idx != 8:
                 print("ERROR: fen problem")
 
         # Parse turn
-        self.white_turn = turn == 'w'
+        self.is_white_turn = turn == 'w'
 
         # Parse castling rights
         self.white_kingside_castle = 'K' in castling
@@ -163,7 +170,7 @@ class Board:
         position = '/'.join(position)
         
         # Add turn
-        turn = 'w' if self.white_turn else 'b'
+        turn = 'w' if self.is_white_turn else 'b'
         
         # Add castling rights
         castling = ''
@@ -206,6 +213,12 @@ class Board:
         """
         piece = self.get_piece(row, col)
         if piece == piece_helper.empty:
+            print("ERROR: get_pseudo_legal_moves called on empty square")
+            return []
+
+        # Validate coordinates
+        if not (0 <= row < 8 and 0 <= col < 8):
+            print(f"ERROR: get_pseudo_legal_moves called with invalid coordinates: {row}, {col}")
             return []
 
         moves = []
@@ -214,27 +227,54 @@ class Board:
         # Pawn moves
         if abs(piece) == piece_helper.white_pawn:
             row_direction = -1 if is_white else 1
+            promotion_rank = 0 if is_white else 7
+            
             # Forward move
             if not only_captures:
                 if 0 <= row + row_direction < 8 and self.get_piece(row + row_direction, col) == piece_helper.empty:
-                    moves.append(Move(row, col, row + row_direction, col))
-                    # Double move from starting position
-                    if (is_white and row == 6) or (not is_white and row == 1):
-                        if self.get_piece(row + 2 * row_direction, col) == piece_helper.empty:
-                            moves.append(Move(row, col, row + 2 * row_direction, col))
+                    # Check for promotion
+                    if row + row_direction == promotion_rank:
+                        # Add all possible promotion moves
+                        promotion_pieces = [
+                            piece_helper.white_queen if is_white else piece_helper.black_queen,
+                            piece_helper.white_rook if is_white else piece_helper.black_rook,
+                            piece_helper.white_bishop if is_white else piece_helper.black_bishop,
+                            piece_helper.white_knight if is_white else piece_helper.black_knight
+                        ]
+                        for promotion_piece in promotion_pieces:
+                            moves.append(Move(row, col, row + row_direction, col, promotion_piece=promotion_piece))
+                    else:
+                        moves.append(Move(row, col, row + row_direction, col))
+                        # Double move from starting position
+                        if (is_white and row == 6) or (not is_white and row == 1):
+                            if self.get_piece(row + 2 * row_direction, col) == piece_helper.empty:
+                                moves.append(Move(row, col, row + 2 * row_direction, col))
+            
             # Regular captures
             for col_direction in [-1, 1]:
                 if 0 <= col + col_direction < 8 and 0 <= row + row_direction < 8:
                     target = self.get_piece(row + row_direction, col + col_direction)
                     if target != piece_helper.empty and (target > 0) != is_white:
-                        moves.append(Move(row, col, row + row_direction, col + col_direction))
+                        # Check for promotion
+                        if row + row_direction == promotion_rank:
+                            # Add all possible promotion captures
+                            promotion_pieces = [
+                                piece_helper.white_queen if is_white else piece_helper.black_queen,
+                                piece_helper.white_rook if is_white else piece_helper.black_rook,
+                                piece_helper.white_bishop if is_white else piece_helper.black_bishop,
+                                piece_helper.white_knight if is_white else piece_helper.black_knight
+                            ]
+                            for promotion_piece in promotion_pieces:
+                                moves.append(Move(row, col, row + row_direction, col + col_direction, promotion_piece=promotion_piece))
+                        else:
+                            moves.append(Move(row, col, row + row_direction, col + col_direction))
             
             # En passant captures
             if self.en_passant_target is not None:
                 en_passant_row, en_passant_col = self.en_passant_target
                 if row == (3 if is_white else 4):  # Correct rank for en passant
                     if abs(col - en_passant_col) == 1:  # Adjacent column
-                        moves.append(Move(row, col, en_passant_row + row_direction, en_passant_col, is_en_passant=True))
+                        moves.append(Move(row, col, en_passant_row, en_passant_col, is_en_passant=True))
 
         # Knight moves
         elif abs(piece) == piece_helper.white_knight:
@@ -265,8 +305,6 @@ class Board:
                         if (target > 0) != is_white:
                             moves.append(Move(row, col, new_row, new_col))
                         break
-                    else:
-                        break
 
         # Rook moves
         elif abs(piece) == piece_helper.white_rook:
@@ -282,8 +320,6 @@ class Board:
                     elif target != piece_helper.empty:
                         if (target > 0) != is_white:
                             moves.append(Move(row, col, new_row, new_col))
-                        break
-                    else:
                         break
 
         # Queen moves (combination of bishop and rook)
@@ -304,8 +340,6 @@ class Board:
                         if (target > 0) != is_white:
                             moves.append(Move(row, col, new_row, new_col))
                         break
-                    else:
-                        break
 
         # King moves
         elif abs(piece) == piece_helper.white_king:
@@ -322,22 +356,32 @@ class Board:
 
         return moves
 
-    def is_square_attacked(self, row: int, col: int, is_white: bool) -> bool:
-        # Check if any opponent piece can attack the king
-        opponent_pieces = [
-            piece_helper.black_pawn, piece_helper.black_knight, piece_helper.black_bishop,
-            piece_helper.black_rook, piece_helper.black_queen, piece_helper.black_king
-        ] if is_white else [
-            piece_helper.white_pawn, piece_helper.white_knight, piece_helper.white_bishop,
-            piece_helper.white_rook, piece_helper.white_queen, piece_helper.white_king
-        ]
+    def find_king(self, is_white: bool) -> tuple[int, int]:
+        """Find the position of the specified king."""
+        king = piece_helper.white_king if is_white else piece_helper.black_king
+        for row in range(8):
+            for col in range(8):
+                if self.board[row][col] == king:
+                    return row, col
+        print(f"ERROR: No {'white' if is_white else 'black'} king found on the board!")
+        return -1, -1  # Should never happen in a valid chess position
 
-        # Check each opponent piece's possible moves (only captures)
-        for piece_type in opponent_pieces:
-            for piece_row, piece_col in self.piece_positions[piece_type]:
-                moves = self.get_pseudo_legal_moves(piece_row, piece_col)
-                if any(move.end_row == row and move.end_col == col for move in moves):
-                    return True
+    def is_square_attacked(self, row: int, col: int, is_white: bool) -> bool:
+        """Check if a square is attacked by any opponent piece."""
+        if not (0 <= row < 8 and 0 <= col < 8):
+            print(f"ERROR: is_square_attacked called with invalid coordinates: {row}, {col}")
+            return False
+
+        # Check each square on the board for opponent pieces
+        for r in range(8):
+            for c in range(8):
+                piece = self.board[r][c]
+                if piece != piece_helper.empty and (piece > 0) != is_white:
+                    # Get all possible moves for this piece
+                    moves = self.get_pseudo_legal_moves(r, c)
+                    # Check if any move attacks the target square
+                    if any(move.end_row == row and move.end_col == col for move in moves):
+                        return True
         return False
 
     def king_is_attacked(self, white_king: bool) -> bool:
@@ -348,34 +392,18 @@ class Board:
         Returns:
             bool: True if the king is under attack, False otherwise
         """
-        # Get the king's position
-        king = piece_helper.white_king if white_king else piece_helper.black_king
-        king_positions = self.piece_positions[king]
-        
-        if not king_positions:  # King not found
-            print("ERROR! NO KING FOUND")
-            return False
-            
-        king_row, king_col = king_positions[0]  # There should only be one king
-        if self.board[king_row][king_col] != king:
-            print("ERROR: somrsdvsdv")
-        
-        # Check if any opponent piece can attack the king
-        opponent_pieces = [
-            piece_helper.black_pawn, piece_helper.black_knight, piece_helper.black_bishop,
-            piece_helper.black_rook, piece_helper.black_queen, piece_helper.black_king
-        ] if white_king else [
-            piece_helper.white_pawn, piece_helper.white_knight, piece_helper.white_bishop,
-            piece_helper.white_rook, piece_helper.white_queen, piece_helper.white_king
-        ]
+        king_row, king_col = self.find_king(white_king)
 
-        # Check each opponent piece's possible moves (only captures)
-        for piece_type in opponent_pieces:
-            for piece_row, piece_col in self.piece_positions[piece_type]:
-                moves = self.get_pseudo_legal_moves(piece_row, piece_col, only_captures=True)
-                if any(move.end_row == king_row and move.end_col == king_col for move in moves):
-                    return True
-        
+        # Check each square on the board for opponent pieces
+        for r in range(8):
+            for c in range(8):
+                piece = self.board[r][c]
+                if piece != piece_helper.empty and (piece > 0) != white_king:
+                    # Get all possible moves for this piece
+                    moves = self.get_pseudo_legal_moves(r, c, only_captures=True)
+                    # Check if any move attacks the target square
+                    if any(move.end_row == king_row and move.end_col == king_col for move in moves):
+                        return True
         return False
 
     def make_move(self, move: Move) -> bool:
@@ -386,6 +414,12 @@ class Board:
         Returns:
             bool: True if the move was successful, False otherwise
         """
+        # Validate move coordinates
+        if not (0 <= move.start_row < 8 and 0 <= move.start_col < 8 and 
+                0 <= move.end_row < 8 and 0 <= move.end_col < 8):
+            print(f"ERROR: make_move called with invalid coordinates: from ({move.start_row}, {move.start_col}) to ({move.end_row}, {move.end_col})")
+            return False
+
         # Save current comprehensive state BEFORE making the move
         current_state = {
             'board': [row[:] for row in self.board],
@@ -395,48 +429,71 @@ class Board:
             'black_queenside_castle': self.black_queenside_castle,
             'en_passant_target': self.en_passant_target,
             'halfmove_clock': self.halfmove_clock,
-            'white_turn': self.white_turn  # Whose turn it is before this move
+            'is_white_turn': self.is_white_turn  # Whose turn it is before this move
         }
         self.position_history.append(current_state)
         
         # Get the piece being moved
         piece = self.get_piece(move.start_row, move.start_col)
         if piece == piece_helper.empty:
+            print(f"ERROR: Attempting to move an empty square from ({move.start_row}, {move.start_col})")
+            return False
+
+        # Verify piece color matches turn
+        if (piece > 0) != self.is_white_turn:
+            print(f"ERROR: Wrong color piece moved! Turn: {'white' if self.is_white_turn else 'black'}, Piece: {piece}")
             return False
             
         # Remove piece from old position
         self.board[move.start_row][move.start_col] = piece_helper.empty
-        self.piece_positions[piece].remove((move.start_row, move.start_col))
-        
-        # Handle captures (including en passant)
-        captured_piece = self.get_piece(move.end_row, move.end_col)
-        if captured_piece != piece_helper.empty:
-            self.piece_positions[captured_piece].remove((move.end_row, move.end_col))
         
         # Handle en passant capture
         if move.is_en_passant:
+            if self.en_passant_target is None:
+                print("ERROR: En passant move attempted but no en passant target exists!")
+                return False
             captured_pawn_row = move.start_row  # The captured pawn is on the same row as the moving pawn
             captured_pawn_col = move.end_col    # The captured pawn is on the same column as the destination
-            captured_piece = self.get_piece(captured_pawn_row, captured_pawn_col)
             self.board[captured_pawn_row][captured_pawn_col] = piece_helper.empty
-            self.piece_positions[captured_piece].remove((captured_pawn_row, captured_pawn_col))
         
         # Handle castling
         if move.is_kingside_castle or move.is_queenside_castle:
-            is_white = piece > 0
+            if abs(piece) != piece_helper.white_king:
+                print("ERROR: Castling attempted with non-king piece!")
+                return False
             rook_col = 7 if move.is_kingside_castle else 0
-            rook_piece = piece_helper.white_rook if is_white else piece_helper.black_rook
+            rook_piece = piece_helper.white_rook if piece > 0 else piece_helper.black_rook
             new_rook_col = move.end_col - 1 if move.is_kingside_castle else move.end_col + 1
+            
+            # Verify rook is present
+            if self.get_piece(move.start_row, rook_col) != rook_piece:
+                print(f"ERROR: Castling attempted but no rook found at {move.start_row}, {rook_col}")
+                return False
             
             # Move the rook
             self.board[move.start_row][rook_col] = piece_helper.empty
             self.board[move.start_row][new_rook_col] = rook_piece
-            self.piece_positions[rook_piece].remove((move.start_row, rook_col))
-            self.piece_positions[rook_piece].append((move.start_row, new_rook_col))
         
         # Place piece in new position
+        target_piece = self.get_piece(move.end_row, move.end_col)
+        if abs(target_piece) == piece_helper.white_king:
+            print("ERROR: Attempting to capture a king!")
+            return False
+        
+        # Handle pawn promotion
+        if move.promotion_piece is not None:
+            if abs(piece) != piece_helper.white_pawn:
+                print("ERROR: Promotion attempted with non-pawn piece!")
+                return False
+            if (piece > 0 and move.end_row != 0) or (piece < 0 and move.end_row != 7):
+                print("ERROR: Promotion attempted on wrong rank!")
+                return False
+            piece = move.promotion_piece
+
         self.board[move.end_row][move.end_col] = piece
-        self.piece_positions[piece].append((move.end_row, move.end_col))
+
+        # Handle captures (including en passant)
+        captured_piece = target_piece
         
         # Update halfmove clock
         if abs(piece) == piece_helper.white_pawn or captured_piece != piece_helper.empty or move.is_en_passant:
@@ -452,17 +509,15 @@ class Board:
             else:  # Black king
                 self.black_kingside_castle = False
                 self.black_queenside_castle = False
-        elif abs(piece) == piece_helper.white_rook:
-            if piece > 0:  # White rook
-                if move.start_col == 7:  # Kingside rook
-                    self.white_kingside_castle = False
-                elif move.start_col == 0:  # Queenside rook
-                    self.white_queenside_castle = False
-            else:  # Black rook
-                if move.start_col == 7:  # Kingside rook
-                    self.black_kingside_castle = False
-                elif move.start_col == 0:  # Queenside rook
-                    self.black_queenside_castle = False
+
+        if (move.start_col == 7 and move.start_row == 7) or (move.end_col == 7 and move.end_row == 7):  # Kingside white rook
+            self.white_kingside_castle = False
+        elif (move.start_col == 0 and move.start_row == 7) or (move.end_col == 0 and move.end_row == 7):  # Queenside whiterook
+            self.white_queenside_castle = False
+        elif (move.start_col == 0 and move.start_row == 0) or (move.end_col == 0 and move.end_row == 0):  # Queenside black rook
+            self.black_queenside_castle = False
+        elif (move.start_col == 7 and move.start_row == 0) or (move.end_col == 7 and move.end_row == 0):  # Kingside black rook
+            self.black_kingside_castle = False
         
         # Update en passant target if it was a double pawn move
         if abs(piece) == piece_helper.white_pawn and abs(move.end_row - move.start_row) == 2:
@@ -471,7 +526,7 @@ class Board:
             self.en_passant_target = None
         
         # Switch turns
-        self.white_turn = not self.white_turn
+        self.is_white_turn = not self.is_white_turn
         
         return True
 
@@ -494,15 +549,7 @@ class Board:
         self.black_queenside_castle = last_saved_state['black_queenside_castle']
         self.en_passant_target = last_saved_state['en_passant_target']
         self.halfmove_clock = last_saved_state['halfmove_clock']
-        self.white_turn = last_saved_state['white_turn'] # This restores the turn to what it was before the move
-
-        # Rebuild piece positions from the restored board
-        self.piece_positions = {piece_type: [] for piece_type in self.piece_positions}
-        for r in range(8):
-            for c in range(8):
-                piece = self.board[r][c]
-                if piece != piece_helper.empty:
-                    self.piece_positions[piece].append((r, c))
+        self.is_white_turn = last_saved_state['is_white_turn'] # This restores the turn to what it was before the move
         
         return True
 
@@ -518,6 +565,7 @@ class Board:
         """
         piece = self.get_piece(row, col)
         if piece == piece_helper.empty:
+            print(f"ERROR: get_piece_moves called on empty square at {row}, {col}")
             return []
             
         is_white = piece > 0
@@ -529,16 +577,18 @@ class Board:
         # Try each move and check if it leaves the king in check
         for move in pseudo_moves:
             # Make the move
-            self.make_move(move)
+            if not self.make_move(move):
+                print("ERROR: Failed to make move during move generation!")
+                continue
             
             # Check if the king is safe
-            king_safe = not self.king_is_attacked(is_white)
+            if not self.king_is_attacked(is_white):
+                moves.append(move)
             
             # Undo the move
-            self.undo_move()
-            
-            if king_safe:
-                moves.append(move)
+            if not self.undo_move():
+                print("ERROR: Failed to undo move during move generation!")
+                continue
         
         # Add castling moves if it's a king
         if abs(piece) == piece_helper.white_king:
@@ -578,36 +628,20 @@ class Board:
         
         return moves
 
-    def get_all_legal_moves(self, white: bool) -> list[Move]:
+    def get_all_legal_moves(self) -> list[Move]:
         """
         Get all legal moves for the given color.
-        Args:
-            white: True for white's moves, False for black's moves
         Returns:
             List of Move objects representing all legal moves for the given color
         """
         moves = []
-        piece_types = [
-            piece_helper.white_pawn,
-            piece_helper.white_knight,
-            piece_helper.white_bishop,
-            piece_helper.white_rook,
-            piece_helper.white_queen,
-            piece_helper.white_king
-        ] if white else [
-            piece_helper.black_pawn,
-            piece_helper.black_knight,
-            piece_helper.black_bishop,
-            piece_helper.black_rook,
-            piece_helper.black_queen,
-            piece_helper.black_king
-        ]
-        
-        # Get all legal moves for each piece of the given color
-        for piece_type in piece_types:
-            for row, col in self.piece_positions[piece_type]:
-                moves.extend(self.get_piece_moves(row, col))
-        
+        # Iterate through all squares
+        for row in range(8):
+            for col in range(8):
+                piece = self.board[row][col]
+                # If we find a piece of the right color
+                if piece != piece_helper.empty and (piece > 0) == self.is_white_turn:
+                    moves.extend(self.get_piece_moves(row, col))
         return moves
 
     def get_gamestate(self) -> str:
@@ -617,9 +651,9 @@ class Board:
             str: "ongoing", "checkmate", "stalemate", "draw_50_move", "draw_threefold_repetition"
         """
         # Check for checkmate or stalemate
-        legal_moves = self.get_all_legal_moves(self.white_turn)
+        legal_moves = self.get_all_legal_moves()
         if not legal_moves:
-            if self.king_is_attacked(self.white_turn):
+            if self.king_is_attacked(self.is_white_turn):
                 return "checkmate"
             else:
                 return "stalemate"
@@ -633,7 +667,7 @@ class Board:
         current_board_tuple = tuple(map(tuple, self.board))
         current_comparable_state = (
             current_board_tuple,
-            self.white_turn,
+            self.is_white_turn,
             self.white_kingside_castle,
             self.white_queenside_castle,
             self.black_kingside_castle,
@@ -648,7 +682,7 @@ class Board:
             past_board_tuple = tuple(map(tuple, past_saved_state_dict['board']))
             past_comparable_state = (
                 past_board_tuple,
-                past_saved_state_dict['white_turn'],
+                past_saved_state_dict['is_white_turn'],
                 past_saved_state_dict['white_kingside_castle'],
                 past_saved_state_dict['white_queenside_castle'],
                 past_saved_state_dict['black_kingside_castle'],
@@ -662,9 +696,3 @@ class Board:
             return "draw_threefold_repetition"
 
         return "ongoing"
-
-def main():
-    print("Hello, World!")
-
-if __name__ == "__main__":
-    main() 

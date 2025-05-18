@@ -52,8 +52,8 @@ class ChessUI(QMainWindow):
         self.board_widget.update_display(board, timer)
         
         # Update timers
-        white_time_ms = timer.milliseconds_remaining if board.white_turn else timer.opponent_milliseconds_remaining
-        black_time_ms = timer.opponent_milliseconds_remaining if board.white_turn else timer.milliseconds_remaining
+        white_time_ms = timer.milliseconds_remaining if board.is_white_turn else timer.opponent_milliseconds_remaining
+        black_time_ms = timer.opponent_milliseconds_remaining if board.is_white_turn else timer.milliseconds_remaining
         
         self.white_timer_label.setText(f"White: {self._format_time(white_time_ms)}")
         self.black_timer_label.setText(f"Black: {self._format_time(black_time_ms)}")
