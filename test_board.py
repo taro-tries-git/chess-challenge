@@ -1,5 +1,28 @@
 import unittest
 from main import Board, Move, piece_helper
+import time
+
+def move_generation_test(board: Board, depth: int) -> int:
+    """
+    Test move generation by counting positions at a given depth.
+    Args:
+        board: The chess board to test
+        depth: How many plies deep to search
+    Returns:
+        int: Number of positions at the given depth
+    """
+    if depth == 0:
+        return 1
+
+    moves = board.get_all_legal_moves()
+    num_positions = 0
+
+    for move in moves:
+        board.make_move(move)
+        num_positions += move_generation_test(board, depth - 1) 
+        board.undo_move()
+
+    return num_positions
 
 
 class TestBoard(unittest.TestCase):
@@ -67,5 +90,59 @@ class TestBoard(unittest.TestCase):
         bishop_moves = [move for move in moves if board.get_piece(move.start_row, move.start_col) == piece_helper.black_bishop]
         self.assertEqual(len(bishop_moves), 0)  # Can only move along the diagonal to maintain protection
 
+    def test_gen_by_depth(self):
+        """Test move generation by depth"""
+        board = Board("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8")
+        
+        start = time.time()
+        result = move_generation_test(board, 1)
+        print(f"Depth 1: {result} moves explored in {time.time() - start:.2f} seconds")
+        self.assertEqual(result, 44)
+
+        start = time.time()
+        result = move_generation_test(board, 2) 
+        print(f"Depth 2: {result} moves explored in {time.time() - start:.2f} seconds")
+        self.assertEqual(result, 1486)
+
+        start = time.time()
+        result = move_generation_test(board, 3)
+        print(f"Depth 3: {result} moves explored in {time.time() - start:.2f} seconds") 
+        self.assertEqual(result, 62379)
+
+        start = time.time()
+        result = move_generation_test(board, 4)
+        print(f"Depth 4: {result} moves explored in {time.time() - start:.2f} seconds")
+        self.assertEqual(result, 2103487)
+
+    def test_gen_by_depth2(self):
+        """Test move generation by depth"""
+        board = Board()
+
+        start = time.time()
+        result = move_generation_test(board, 1)
+        print(f"Depth 1: {result} moves explored in {time.time() - start:.2f} seconds")
+        self.assertEqual(result, 20)
+
+        start = time.time() 
+        result = move_generation_test(board, 2)
+        print(f"Depth 2: {result} moves explored in {time.time() - start:.2f} seconds")
+        self.assertEqual(result, 400)
+
+        start = time.time()
+        result = move_generation_test(board, 3)
+        print(f"Depth 3: {result} moves explored in {time.time() - start:.2f} seconds")
+        self.assertEqual(result, 8902)
+
+        start = time.time()
+        result = move_generation_test(board, 4)
+        print(f"Depth 4: {result} moves explored in {time.time() - start:.2f} seconds")
+        self.assertEqual(result, 197281)
+
+        start = time.time()
+        result = move_generation_test(board, 5)
+        print(f"Depth 5: {result} moves explored in {time.time() - start:.2f} seconds")
+        self.assertEqual(result, 4865609)
+
+
 if __name__ == '__main__':
-    unittest.main() 
+    unittest.main()

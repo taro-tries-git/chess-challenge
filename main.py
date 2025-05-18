@@ -508,17 +508,15 @@ class Board:
             else:  # Black king
                 self.black_kingside_castle = False
                 self.black_queenside_castle = False
-        elif abs(piece) == piece_helper.white_rook:
-            if piece > 0:  # White rook
-                if move.start_col == 7:  # Kingside rook
-                    self.white_kingside_castle = False
-                elif move.start_col == 0:  # Queenside rook
-                    self.white_queenside_castle = False
-            else:  # Black rook
-                if move.start_col == 7:  # Kingside rook
-                    self.black_kingside_castle = False
-                elif move.start_col == 0:  # Queenside rook
-                    self.black_queenside_castle = False
+
+        if (move.start_col == 7 and move.start_row == 7) or (move.end_col == 7 and move.end_row == 7):  # Kingside white rook
+            self.white_kingside_castle = False
+        elif (move.start_col == 0 and move.start_row == 7) or (move.end_col == 0 and move.end_row == 7):  # Queenside whiterook
+            self.white_queenside_castle = False
+        elif (move.start_col == 0 and move.start_row == 0) or (move.end_col == 0 and move.end_row == 0):  # Queenside black rook
+            self.black_queenside_castle = False
+        elif (move.start_col == 7 and move.start_row == 0) or (move.end_col == 7 and move.end_row == 0):  # Kingside black rook
+            self.black_kingside_castle = False
         
         # Update en passant target if it was a double pawn move
         if abs(piece) == piece_helper.white_pawn and abs(move.end_row - move.start_row) == 2:
