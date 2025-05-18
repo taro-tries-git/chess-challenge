@@ -305,8 +305,6 @@ class Board:
                         if (target > 0) != is_white:
                             moves.append(Move(row, col, new_row, new_col))
                         break
-                    else:
-                        break
 
         # Rook moves
         elif abs(piece) == piece_helper.white_rook:
@@ -322,8 +320,6 @@ class Board:
                     elif target != piece_helper.empty:
                         if (target > 0) != is_white:
                             moves.append(Move(row, col, new_row, new_col))
-                        break
-                    else:
                         break
 
         # Queen moves (combination of bishop and rook)
@@ -343,8 +339,6 @@ class Board:
                     elif target != piece_helper.empty:
                         if (target > 0) != is_white:
                             moves.append(Move(row, col, new_row, new_col))
-                        break
-                    else:
                         break
 
         # King moves
@@ -399,11 +393,18 @@ class Board:
             bool: True if the king is under attack, False otherwise
         """
         king_row, king_col = self.find_king(white_king)
-        if king_row == -1 or king_col == -1:
-            print("ERROR: king_is_attacked called but king not found!")
-            return False
-        
-        return self.is_square_attacked(king_row, king_col, white_king)
+
+        # Check each square on the board for opponent pieces
+        for r in range(8):
+            for c in range(8):
+                piece = self.board[r][c]
+                if piece != piece_helper.empty and (piece > 0) != white_king:
+                    # Get all possible moves for this piece
+                    moves = self.get_pseudo_legal_moves(r, c, only_captures=True)
+                    # Check if any move attacks the target square
+                    if any(move.end_row == king_row and move.end_col == king_col for move in moves):
+                        return True
+        return False
 
     def make_move(self, move: Move) -> bool:
         """
