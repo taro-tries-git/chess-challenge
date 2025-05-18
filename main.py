@@ -1,3 +1,6 @@
+import random
+
+
 class piece_helper:
     # Piece constants
     empty = 0
@@ -14,6 +17,37 @@ class piece_helper:
     black_queen = -5
     black_king = -6
 
+
+# Initialize Zobrist hashing values (at module level)
+ZOBRIST_PIECE_SQUARE = {}  # (piece, square) -> random 64-bit number
+ZOBRIST_CASTLING = {}      # (castle_right) -> random 64-bit number
+ZOBRIST_EN_PASSANT = {}    # (file) -> random 64-bit number
+ZOBRIST_SIDE = random.getrandbits(64)  # For side to move
+
+# Initialize random numbers for Zobrist hashing
+def _init_zobrist():
+    # For each piece on each square
+    pieces = [
+        piece_helper.white_pawn, piece_helper.white_knight, piece_helper.white_bishop,
+        piece_helper.white_rook, piece_helper.white_queen, piece_helper.white_king,
+        piece_helper.black_pawn, piece_helper.black_knight, piece_helper.black_bishop,
+        piece_helper.black_rook, piece_helper.black_queen, piece_helper.black_king
+    ]
+    for piece in pieces:
+        for square in range(64):
+            ZOBRIST_PIECE_SQUARE[(piece, square)] = random.getrandbits(64)
+
+    # For castling rights
+    for right in ['K', 'Q', 'k', 'q']:
+        ZOBRIST_CASTLING[right] = random.getrandbits(64)
+
+    # For en passant files
+    for file in range(8):
+        ZOBRIST_EN_PASSANT[file] = random.getrandbits(64)
+
+
+# Initialize Zobrist values when module is loaded
+_init_zobrist()
 
 class Move:
     def __init__(self, start_row: int, start_col: int, end_row: int, end_col: int, 
@@ -128,6 +162,43 @@ class Board:
 
         # Parse halfmove clock
         self.halfmove_clock = int(halfmove)
+
+    def get_zobrist_hash(self) -> int:
+        """
+        Calculate and return the Zobrist hash for the current position.
+        Returns:
+            int: 64-bit Zobrist hash value
+        """
+        h = 0
+
+        # Hash pieces
+        for row in range(8):
+            for col in range(8):
+                piece = self.board[row][col]
+                if piece != piece_helper.empty:
+                    square = row * 8 + col
+                    h ^= ZOBRIST_PIECE_SQUARE[(piece, square)]
+
+        # Hash castling rights
+        if self.white_kingside_castle:
+            h ^= ZOBRIST_CASTLING['K']
+        if self.white_queenside_castle:
+            h ^= ZOBRIST_CASTLING['Q']
+        if self.black_kingside_castle:
+            h ^= ZOBRIST_CASTLING['k']
+        if self.black_queenside_castle:
+            h ^= ZOBRIST_CASTLING['q']
+
+        # Hash en passant
+        if self.en_passant_target is not None:
+            _, col = self.en_passant_target
+            h ^= ZOBRIST_EN_PASSANT[col]
+
+        # Hash side to move
+        if self.is_white_turn:
+            h ^= ZOBRIST_SIDE
+
+        return h
 
     def get_fen(self) -> str:
         """

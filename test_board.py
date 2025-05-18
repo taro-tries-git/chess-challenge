@@ -2,6 +2,7 @@ import unittest
 from main import Board, Move, piece_helper
 import time
 
+
 def move_generation_test(board: Board, depth: int) -> int:
     """
     Test move generation by counting positions at a given depth.
@@ -142,6 +143,42 @@ class TestBoard(unittest.TestCase):
         result = move_generation_test(board, 5)
         print(f"Depth 5: {result} moves explored in {time.time() - start:.2f} seconds")
         self.assertEqual(result, 4865609)
+
+    def test_zobrist_hash(self):
+        """Test that Zobrist hashing works correctly"""
+        # Test 1: Same position should have same hash
+        board1 = Board()
+        board2 = Board()
+        self.assertEqual(board1.get_zobrist_hash(), board2.get_zobrist_hash())
+
+        # Test 2: Different positions should have different hashes
+        board2 = Board("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1")  # After 1. e4
+        self.assertNotEqual(board1.get_zobrist_hash(), board2.get_zobrist_hash())
+
+        # Test 3: Moving a piece and moving it back should give the same hash
+        board = Board()
+        original_hash = board.get_zobrist_hash()
+        
+        # Make a move
+        move = Move(6, 4, 4, 4)  # 1. e4
+        board.make_move(move)
+        middle_hash = board.get_zobrist_hash()
+        self.assertNotEqual(original_hash, middle_hash)
+        
+        # Undo the move
+        board.undo_move()
+        final_hash = board.get_zobrist_hash()
+        self.assertEqual(original_hash, final_hash)
+
+        # Test 4: Test that castling rights affect the hash
+        board1 = Board("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1")  # All castling rights
+        board2 = Board("r3k2r/8/8/8/8/8/8/R3K2R w KQ - 0 1")    # Only white castling rights
+        self.assertNotEqual(board1.get_zobrist_hash(), board2.get_zobrist_hash())
+
+        # Test 5: Test that en passant square affects the hash
+        board1 = Board("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1")  # After 1. e4
+        board2 = Board("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1")   # Same but no e.p.
+        self.assertNotEqual(board1.get_zobrist_hash(), board2.get_zobrist_hash())
 
 
 if __name__ == '__main__':
