@@ -28,6 +28,26 @@ class Move:
         self.is_queenside_castle = is_queenside_castle
         self.promotion_piece = promotion_piece  # The piece type to promote to
 
+    def get_printable(self) -> str:
+        """
+        Returns a human-readable string representation of the move (e.g. 'e2-e4').
+        Returns:
+            str: The move in algebraic notation
+        """
+        # Convert row/col coordinates to algebraic notation
+        start_square = chr(ord('a') + self.start_col) + str(8 - self.start_row)
+        end_square = chr(ord('a') + self.end_col) + str(8 - self.end_row)
+        
+        # Special move annotations
+        if self.is_kingside_castle:
+            return "O-O"
+        elif self.is_queenside_castle:
+            return "O-O-O"
+        elif self.is_en_passant:
+            return f"{start_square}-{end_square} e.p."
+            
+        return f"{start_square}-{end_square}"
+
 
 class Board:
     def __init__(self, fen: str ="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"):
@@ -254,7 +274,7 @@ class Board:
                 en_passant_row, en_passant_col = self.en_passant_target
                 if row == (3 if is_white else 4):  # Correct rank for en passant
                     if abs(col - en_passant_col) == 1:  # Adjacent column
-                        moves.append(Move(row, col, en_passant_row + row_direction, en_passant_col, is_en_passant=True))
+                        moves.append(Move(row, col, en_passant_row, en_passant_col, is_en_passant=True))
 
         # Knight moves
         elif abs(piece) == piece_helper.white_knight:
@@ -468,7 +488,7 @@ class Board:
                 print("ERROR: Promotion attempted on wrong rank!")
                 return False
             piece = move.promotion_piece
-        
+
         self.board[move.end_row][move.end_col] = piece
 
         # Handle captures (including en passant)
